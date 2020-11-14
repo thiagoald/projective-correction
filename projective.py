@@ -1,65 +1,54 @@
-from sympy import Matrix
-from sympy import symbols
-from sympy import fraction
-from sympy import Eq
-from sympy import linsolve
 import numpy as np
+from sympy import Eq, Matrix, fraction, linsolve, symbols
 
-# Make an equation from a single coordinate of a symbolic and a numeric represantation of a point
-def make_eq(p_im_sym, p_im):
-    n1, d1 = fraction(p_im_sym)
-    n2, d2 = fraction(p_im)
-    return Eq(n1*d2 - n2*d1, 0)
-
-def hom(pt):
-    return pt.row_insert(2, Matrix([1]))
-
-# Extract which number is multiplying a symbol
-def coeff(symbol, expr):
-    return expr.subs(symbol, 1) - expr.subs(symbol, 0)
-
-# def calc_proj_mat(pts1, pts2):
-#     a,b,c,d,e,f,g,h,i = symbols('a b c d e f g h i')
-#     mat = Matrix([[a,b,c],
-#                   [d,e,f],
-#                   [g, h, i]])
-#     pts1_sym = [mat * hom(Matrix(p)) for p in pts1]
-#     # Resulting equations
-#     eqs = []
-#     rhs = []
-#     for p_sym, p_im in zip(pts1_sym, pts2):
-#         for i in range(2):
-#             eqs.append(make_eq(p_sym[i], p_im[i]))
-#             lhs_subs = eqs[-1].lhs
-#             for s in [a, b, c, d, e, f, g, h, i]:
-#                 lhs_subs = lhs_subs.subs(s, 0)
-#             rhs.append(-lhs_subs)
-#     print(rhs)
-#     coeffs = []
-#     i = symbols('i')
-#     for eq in eqs:
-#         coeffs.append([coeff(s, eq.lhs) for s in [a, b, c, d, e, f, g, h, i]])
-#         print(eq)
-#     system_mat = Matrix(coeffs[:-2])
-#     print(system_mat)
-#     solution = linsolve((system_mat, Matrix(rhs)), [a,b,c,d,e,f,g,h,i])
-#     print(solution)
 
 def calc_homography(pts1, pts2):
+    '''Calculate homography matrix using 4 points in each image'''
     mat = np.zeros((8, 9), dtype=np.float32)
     for i, (pt1, pt2) in enumerate(zip(pts1, pts2)):
         xi = np.append(np.array(pt1), 1)
         (xi_, yi_, wi_) = [c for c in pt2] + [1]
-        mat[2*i,:] = [0,0,0] + list(-wi_*xi) + list(yi_*xi)
-        mat[2 * i + 1,:] = list(wi_ * xi) + [0, 0, 0] + list(-xi_ * xi)
-    # u, s, vh = np.linalg.svd(mat)
-    # print(f'U: {u}')
-    # print(f'S: {s}')
-    # print(f'vh: {vh}')
+        mat[2*i, :] = [0, 0, 0] + list(-wi_*xi) + list(yi_*xi)
+        mat[2 * i + 1, :] = list(wi_ * xi) + [0, 0, 0] + list(-xi_ * xi)
+    A = Matrix(mat)
+    B = Matrix([0]*8)
+    sols = linsolve((A, B))
+    first_sol = list(sols)[0]
+    return np.array(first_sol.subs('tau0', 1)).reshape(3, 3)
 
-    # # print(vh[:, -1])
-    # # print('\n\n')
-    # # print(f'Lowest singular value: {s[-1]}')
-    # # print(f'Vh: {vh}')
-    # return vh[:, -1].reshape(3,3)
-    return np.array(list(linsolve((Matrix(mat), Matrix([0]*8))))[0].subs('tau0', 1)).reshape(3,3)
+
+def hom(vec):
+    '''Homogeneous coordinates'''
+    return np.array(list(vec) + [1])
+
+
+def from_hom(vec):
+    return vec[:-1]/vec[-1]
+
+
+def calc_affine_mat(pts_lines):
+    '''
+    Calculate matrix from two pairs of lines.
+    '''
+    (l1_p1, l1_p2, l2_p1, l2_p2,
+     l3_p1, l3_p2, l4_p1, l4_p2) = [hom(p) for p in pts_lines]
+
+    line1 = np.cross(l1_p1, l1_p2)
+    line2 = np.cross(l2_p1, l2_p2)
+    line3 = np.cross(l3_p1, l3_p2)
+    line4 = np.cross(l4_p1, l4_p2)
+
+    # Intersections (image of infinity)
+    inter1 = np.cross(line1, line2)
+    inter2 = np.cross(line3, line4)
+
+    # Image of infinity line
+    line_inf = np.cross(inter1, inter2)
+    line_inf = line_inf / (line_inf.max()*10)
+    a, b, c = list(line_inf)
+
+    # TODO: If c==0
+    mat = np.array([[1, 0, 0],
+                    [0, 1, 0],
+                    [a, b, c]])
+    return mat
