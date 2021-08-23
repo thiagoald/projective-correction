@@ -1,5 +1,7 @@
 # projective-correction
 
+Fix a projective deformation.
+
 ## Install
 
 ```sh
